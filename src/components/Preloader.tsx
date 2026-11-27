@@ -6,7 +6,7 @@ interface PreloaderProps {
   onComplete: () => void;
 }
 
-const LOADER_DURATION_MS = 1350;
+const LOADER_DURATION_MS = 900;
 
 export function Preloader({ onCurtainStart, onComplete }: PreloaderProps) {
   const [progress, setProgress] = useState(0);
@@ -40,42 +40,31 @@ export function Preloader({ onCurtainStart, onComplete }: PreloaderProps) {
   useEffect(() => {
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     let rafId = 0;
-    let fadeTimer = 0;
-    let liftTimer = 0;
     let doneTimer = 0;
     let disposed = false;
 
-    const triggerRevealSequence = () => {
+    const revealGate = () => {
       if (disposed) return;
+      onCurtainStart();
       if (reducedMotion) {
         setTextFading(true);
         setCurtainLifted(true);
-        onCurtainStart();
         doneTimer = window.setTimeout(() => {
           if (!disposed) onComplete();
-        }, 160);
+        }, 0);
         return;
       }
 
-      fadeTimer = window.setTimeout(() => {
-        if (!disposed) setTextFading(true);
-      }, 90);
-
-      liftTimer = window.setTimeout(() => {
-        if (!disposed) {
-          setCurtainLifted(true);
-          onCurtainStart();
-        }
-      }, 280);
-
+      setTextFading(true);
+      setCurtainLifted(true);
       doneTimer = window.setTimeout(() => {
         if (!disposed) onComplete();
-      }, 1050);
+      }, 760);
     };
 
     if (reducedMotion) {
       setProgress(100);
-      triggerRevealSequence();
+      revealGate();
       return () => {
         disposed = true;
         window.clearTimeout(doneTimer);
@@ -92,7 +81,7 @@ export function Preloader({ onCurtainStart, onComplete }: PreloaderProps) {
       if (next < 100) {
         rafId = window.requestAnimationFrame(tick);
       } else {
-        triggerRevealSequence();
+        revealGate();
       }
     };
 
@@ -101,11 +90,9 @@ export function Preloader({ onCurtainStart, onComplete }: PreloaderProps) {
     return () => {
       disposed = true;
       window.cancelAnimationFrame(rafId);
-      window.clearTimeout(fadeTimer);
-      window.clearTimeout(liftTimer);
       window.clearTimeout(doneTimer);
     };
-  }, [onComplete, onCurtainStart]);
+  }, [onCurtainStart, onComplete]);
 
   return (
     <div

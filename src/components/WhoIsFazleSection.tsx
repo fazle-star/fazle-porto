@@ -1,15 +1,66 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Camera } from 'lucide-react';
 import { PORTFOLIO_DATA } from '../data/portfolio';
 
 export function WhoIsFazleSection() {
-  const [touchPaused, setTouchPaused] = useState(false);
   const [failedImages, setFailedImages] = useState<Record<string, boolean>>({});
+  const marqueeTrackRef = useRef<HTMLDivElement | null>(null);
+  const marqueePausedRef = useRef(false);
 
   const marqueePhotos = [
     ...PORTFOLIO_DATA.whoIsFazle.gallery,
     ...PORTFOLIO_DATA.whoIsFazle.gallery,
   ];
+
+  useEffect(() => {
+    const track = marqueeTrackRef.current;
+    if (!track || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+    let rafId = 0;
+    let previousFrame = performance.now();
+    let previousScroll = window.scrollY;
+    let previousScrollTime = previousFrame;
+    let scrollVelocity = 0;
+    let speed = 34;
+    let offset = 0;
+
+    const handleScroll = () => {
+      const now = performance.now();
+      const elapsed = Math.max(16, now - previousScrollTime);
+      scrollVelocity = Math.min(
+        1800,
+        (Math.abs(window.scrollY - previousScroll) / elapsed) * 1000
+      );
+      previousScroll = window.scrollY;
+      previousScrollTime = now;
+    };
+
+    const animate = (now: number) => {
+      const elapsed = Math.min(50, now - previousFrame);
+      previousFrame = now;
+      const targetSpeed = 34 + scrollVelocity * 0.1;
+      speed += (targetSpeed - speed) * Math.min(1, elapsed / 180);
+      scrollVelocity *= Math.exp(-elapsed / 240);
+
+      if (!marqueePausedRef.current) {
+        const loopWidth = track.scrollWidth / 2;
+        if (loopWidth > 0) {
+          offset -= (speed * elapsed) / 1000;
+          if (offset <= -loopWidth) offset += loopWidth;
+          track.style.transform = `translate3d(${offset}px, 0, 0)`;
+        }
+      }
+
+      rafId = window.requestAnimationFrame(animate);
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    rafId = window.requestAnimationFrame(animate);
+    return () => {
+      window.removeEventListener('scroll', handleScroll);
+      window.cancelAnimationFrame(rafId);
+    };
+  }, []);
 
   return (
     <section
@@ -67,9 +118,32 @@ export function WhoIsFazleSection() {
       <div
         data-testid="bio-photo-marquee"
         className="bio-marquee-container relative w-full overflow-hidden py-3 mb-14"
-        onTouchStart={() => setTouchPaused(true)}
-        onTouchEnd={() => setTouchPaused(false)}
-        onTouchCancel={() => setTouchPaused(false)}
+        onMouseEnter={() => {
+          marqueePausedRef.current = true;
+        }}
+        onMouseLeave={() => {
+          marqueePausedRef.current = false;
+        }}
+        onFocusCapture={() => {
+          marqueePausedRef.current = true;
+        }}
+        onBlurCapture={(event) => {
+          if (
+            !(event.relatedTarget instanceof Node) ||
+            !event.currentTarget.contains(event.relatedTarget)
+          ) {
+            marqueePausedRef.current = false;
+          }
+        }}
+        onTouchStart={() => {
+          marqueePausedRef.current = true;
+        }}
+        onTouchEnd={() => {
+          marqueePausedRef.current = false;
+        }}
+        onTouchCancel={() => {
+          marqueePausedRef.current = false;
+        }}
       >
         <div
           aria-hidden="true"
@@ -81,8 +155,8 @@ export function WhoIsFazleSection() {
         />
 
         <div
+          ref={marqueeTrackRef}
           className="bio-marquee-track gap-5 px-4"
-          style={touchPaused ? { animationPlayState: 'paused' } : undefined}
         >
           {marqueePhotos.map((photo, index) => {
             const isDuplicate = index >= PORTFOLIO_DATA.whoIsFazle.gallery.length;

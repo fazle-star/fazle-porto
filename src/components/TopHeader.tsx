@@ -1,10 +1,14 @@
 import { useEffect, useState } from 'react';
 import { PORTFOLIO_DATA } from '../data/portfolio';
 import { formatYogyakartaTime, getBrandDisplayName } from '../utils/portfolioEngine';
+import { ThemeSwitcher } from './ThemeSwitcher';
+import type { PortfolioTheme } from '../utils/theme';
 
 interface TopHeaderProps {
   activeSection: string;
   onNavigate: (sectionId: string) => void;
+  theme: PortfolioTheme;
+  onThemeChange: (theme: PortfolioTheme) => void;
 }
 
 const DESKTOP_NAV_ITEMS = [
@@ -15,7 +19,12 @@ const DESKTOP_NAV_ITEMS = [
   { id: 'contact', index: '05', label: 'Contact' },
 ];
 
-export function TopHeader({ activeSection, onNavigate }: TopHeaderProps) {
+export function TopHeader({
+  activeSection,
+  onNavigate,
+  theme,
+  onThemeChange,
+}: TopHeaderProps) {
   const [brandName, setBrandName] = useState<string>(() =>
     typeof window !== 'undefined'
       ? getBrandDisplayName(window.innerWidth)
@@ -46,7 +55,7 @@ export function TopHeader({ activeSection, onNavigate }: TopHeaderProps) {
       className="fixed top-0 inset-x-0 z-[100] border-b border-[rgba(243,244,246,0.12)] bg-[#0B0D10]"
       style={{ height: '68px' }}
     >
-      <div className="max-w-7xl mx-auto h-full px-5 sm:px-8 lg:px-12 flex items-center justify-between gap-4 md:gap-8">
+      <div className="max-w-7xl mx-auto h-full px-5 sm:px-8 lg:px-12 flex items-center justify-between gap-3 md:gap-6">
         {/* Zone 1: Brand Identity (Responsive Full Name Desktop / Short Name Mobile) */}
         <a
           href="#home"
@@ -101,6 +110,8 @@ export function TopHeader({ activeSection, onNavigate }: TopHeaderProps) {
           </span>
           <span className="text-[#E2B86B] font-medium">{wibTime} WIB</span>
         </div>
+
+        <ThemeSwitcher theme={theme} onChange={onThemeChange} />
       </div>
     </header>
   );

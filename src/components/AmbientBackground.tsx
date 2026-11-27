@@ -1,8 +1,13 @@
 import { useEffect, useRef } from 'react';
-import { computeParticleSpeed } from '../utils/portfolioEngine';
+import { clamp, computeParticleSpeed, computeSpringStep } from '../utils/portfolioEngine';
+import type { PortfolioTheme } from '../utils/theme';
 
 interface AmbientBackgroundProps {
   portalVelocityRef: React.RefObject<number>;
+  theme: PortfolioTheme;
+  themeGateOpen: boolean;
+  hoveredTheme: PortfolioTheme | null;
+  motionPaused: boolean;
 }
 
 interface Particle {
@@ -15,10 +20,48 @@ interface Particle {
   driftX: number;
 }
 
-export function AmbientBackground({ portalVelocityRef }: AmbientBackgroundProps) {
+function drawParticleSprite(sprite: HTMLCanvasElement, theme: PortfolioTheme) {
+  const context = sprite.getContext('2d');
+  if (!context) return;
+
+  context.clearRect(0, 0, sprite.width, sprite.height);
+  const color = theme === 'dark' ? '226, 184, 107' : '217, 78, 40';
+  const gradient = context.createRadialGradient(6, 6, 0.5, 6, 6, 6);
+  gradient.addColorStop(0, `rgba(${color}, 1)`);
+  gradient.addColorStop(0.55, `rgba(${color}, 0.65)`);
+  gradient.addColorStop(1, `rgba(${color}, 0)`);
+  context.fillStyle = gradient;
+  context.fillRect(0, 0, sprite.width, sprite.height);
+}
+
+function measureTrackPeriod(track: HTMLDivElement | null): number {
+  const firstCopy = track?.firstElementChild;
+  if (!track || !firstCopy) return 0;
+  const gap = Number.parseFloat(getComputedStyle(track).columnGap) || 0;
+  return firstCopy.getBoundingClientRect().width + gap;
+}
+
+export function AmbientBackground({
+  portalVelocityRef,
+  theme,
+  themeGateOpen,
+  hoveredTheme,
+  motionPaused,
+}: AmbientBackgroundProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const spotlightRef = useRef<HTMLDivElement | null>(null);
   const grainRef = useRef<HTMLDivElement | null>(null);
+  const securityLineRef = useRef<HTMLDivElement | null>(null);
+  const developerLineRef = useRef<HTMLDivElement | null>(null);
+  const particleSpriteRef = useRef<HTMLCanvasElement | null>(null);
+  const kineticVelocityRef = useRef(0.4);
+  const kineticPositionRef = useRef(0);
+  const securityPeriodRef = useRef(0);
+  const developerPeriodRef = useRef(0);
+  const motionConfigRef = useRef({ themeGateOpen, hoveredTheme, motionPaused });
+  motionConfigRef.current = { themeGateOpen, hoveredTheme, motionPaused };
+  const themeRef = useRef(theme);
+  themeRef.current = theme;
 
   // Layer 5: Pre-bake a lightweight 128x128 film grain tile once (zero runtime filter cost)
   useEffect(() => {
@@ -46,7 +89,7 @@ export function AmbientBackground({ portalVelocityRef }: AmbientBackgroundProps)
   // Layer 3: Compositor-only pointer spotlight
   useEffect(() => {
     const spotlight = spotlightRef.current;
-    if (!spotlight) return;
+    if (!spotlight || motionPaused) return;
 
     const setPos = (x: number, y: number) => {
       spotlight.style.transform = `translate3d(${(x - 450).toFixed(1)}px, ${(y - 450).toFixed(1)}px, 0)`;
@@ -62,7 +105,98 @@ export function AmbientBackground({ portalVelocityRef }: AmbientBackgroundProps)
     return () => {
       window.removeEventListener('pointermove', handlePointerMove);
     };
-  }, []);
+  }, [motionPaused]);
+
+  useEffect(() => {
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let rafId = 0;
+    let lastFrameTime = 0;
+    const measurePeriods = () => {
+      securityPeriodRef.current = measureTrackPeriod(securityLineRef.current);
+      developerPeriodRef.current = measureTrackPeriod(developerLineRef.current);
+    };
+
+    const updateLinePositions = () => {
+      const { themeGateOpen: gateOpen } = motionConfigRef.current;
+      const hero = gateOpen ? null : document.getElementById('home');
+      const scrollOffset = hero
+        ? clamp(-hero.getBoundingClientRect().top, 0, hero.offsetHeight) * 0.16
+        : 0;
+      const x = kineticPositionRef.current;
+
+      if (securityLineRef.current) {
+        securityLineRef.current.style.transform = `translate3d(${x - scrollOffset}px, 0, 0)`;
+      }
+      if (developerLineRef.current) {
+        developerLineRef.current.style.transform = `translate3d(${x + scrollOffset}px, 0, 0)`;
+      }
+    };
+
+    if (reducedMotion || motionPaused) {
+      kineticVelocityRef.current = 0;
+      measurePeriods();
+      updateLinePositions();
+      return;
+    }
+
+    const animateLines = (time: number) => {
+      const config = motionConfigRef.current;
+      const velocity = kineticVelocityRef.current;
+      const idleDirection = velocity < 0 ? -1 : 1;
+      const targetVelocity = config.themeGateOpen
+        ? config.hoveredTheme === 'dark'
+          ? -7.5
+          : config.hoveredTheme === 'light'
+            ? 7.5
+            : idleDirection * 0.4
+        : 0;
+
+      const nextVelocity = computeSpringStep(velocity, targetVelocity, 0.08);
+      kineticVelocityRef.current = nextVelocity;
+      const frameScale = lastFrameTime
+        ? clamp((time - lastFrameTime) / 16.67, 0.5, 2)
+        : 1;
+      const period = Math.max(
+        securityPeriodRef.current,
+        developerPeriodRef.current,
+        window.innerWidth
+      );
+      let nextPosition = kineticPositionRef.current + nextVelocity * frameScale;
+      if (nextPosition < -period) nextPosition += period;
+      if (nextPosition > period) nextPosition -= period;
+      kineticPositionRef.current = nextPosition;
+      lastFrameTime = time;
+      updateLinePositions();
+
+      if (config.themeGateOpen || Math.abs(nextVelocity - targetVelocity) > 0.01) {
+        rafId = window.requestAnimationFrame(animateLines);
+      } else {
+        rafId = 0;
+      }
+    };
+
+    const updateOnScroll = () => {
+      if (!rafId) updateLinePositions();
+    };
+
+    measurePeriods();
+    const resizeObserver = new ResizeObserver(measurePeriods);
+    if (securityLineRef.current) resizeObserver.observe(securityLineRef.current);
+    if (developerLineRef.current) resizeObserver.observe(developerLineRef.current);
+    window.addEventListener('scroll', updateOnScroll, { passive: true });
+
+    if (!motionPaused && (themeGateOpen || Math.abs(kineticVelocityRef.current) > 0.01)) {
+      rafId = window.requestAnimationFrame(animateLines);
+    } else {
+      updateLinePositions();
+    }
+
+    return () => {
+      window.removeEventListener('scroll', updateOnScroll);
+      resizeObserver.disconnect();
+      window.cancelAnimationFrame(rafId);
+    };
+  }, [themeGateOpen, motionPaused]);
 
   // Layer 4: 45 lightweight 3D dust particles using pre-rendered sprite & 0.5x backing buffer
   useEffect(() => {
@@ -82,15 +216,8 @@ export function AmbientBackground({ portalVelocityRef }: AmbientBackgroundProps)
     const sprite = document.createElement('canvas');
     sprite.width = 12;
     sprite.height = 12;
-    const sctx = sprite.getContext('2d');
-    if (sctx) {
-      const grad = sctx.createRadialGradient(6, 6, 0.5, 6, 6, 6);
-      grad.addColorStop(0, 'rgba(226, 184, 107, 1)');
-      grad.addColorStop(0.55, 'rgba(226, 184, 107, 0.65)');
-      grad.addColorStop(1, 'rgba(226, 184, 107, 0)');
-      sctx.fillStyle = grad;
-      sctx.fillRect(0, 0, 12, 12);
-    }
+    particleSpriteRef.current = sprite;
+    drawParticleSprite(sprite, themeRef.current);
 
     const particles: Particle[] = Array.from({ length: 45 }, () => {
       const z = 0.25 + Math.random() * 0.75;
@@ -105,17 +232,22 @@ export function AmbientBackground({ portalVelocityRef }: AmbientBackgroundProps)
       };
     });
 
-    const drawParticles = (velocity: number) => {
+    const drawParticles = (advance: boolean) => {
       ctx.clearRect(0, 0, width, height);
+      const kineticBoost = clamp((Math.abs(kineticVelocityRef.current) - 0.4) / 7.1, 0, 1);
+      const portalVelocity = portalVelocityRef.current ?? 0;
       for (const p of particles) {
-        if (velocity >= 0) {
-          const speed = computeParticleSpeed(p.baseSpeed, velocity);
+        if (advance && !motionConfigRef.current.motionPaused) {
+          const speed = computeParticleSpeed(
+            p.baseSpeed,
+            Math.max(portalVelocity, kineticBoost)
+          );
           p.y -= speed;
-          p.x += p.driftX;
+          p.x += p.driftX + Math.sign(kineticVelocityRef.current) * speed * 0.35;
 
-          if (velocity > 0.05) {
+          if (portalVelocity > 0.05) {
             const centerX = width * 0.5;
-            p.x += (centerX - p.x) * 0.0025 * velocity;
+            p.x += (centerX - p.x) * 0.0025 * portalVelocity;
           }
 
           if (p.y < -6) {
@@ -133,13 +265,13 @@ export function AmbientBackground({ portalVelocityRef }: AmbientBackgroundProps)
     };
 
     if (prefersReducedMotion) {
-      drawParticles(-1);
+      drawParticles(false);
       const handleResize = () => {
         width = Math.max(320, Math.round(window.innerWidth * scale));
         height = Math.max(240, Math.round(window.innerHeight * scale));
         canvas.width = width;
         canvas.height = height;
-        drawParticles(-1);
+        drawParticles(false);
       };
       window.addEventListener('resize', handleResize);
       return () => window.removeEventListener('resize', handleResize);
@@ -151,7 +283,7 @@ export function AmbientBackground({ portalVelocityRef }: AmbientBackgroundProps)
 
     const render = () => {
       if (disposed) return;
-      drawParticles(portalVelocityRef.current ?? 0);
+      drawParticles(true);
       timerId = window.setTimeout(() => {
         if (!disposed) {
           rafId = window.requestAnimationFrame(render);
@@ -177,10 +309,16 @@ export function AmbientBackground({ portalVelocityRef }: AmbientBackgroundProps)
     };
   }, [portalVelocityRef]);
 
+  useEffect(() => {
+    const sprite = particleSpriteRef.current;
+    if (sprite) drawParticleSprite(sprite, theme);
+  }, [theme]);
+
   return (
     <div
       id="ambient-bg"
       aria-hidden="true"
+      data-motion-paused={motionPaused}
       className="fixed inset-0 z-0 pointer-events-none overflow-hidden"
     >
       {/* Layer 1: Architectural 1px Vertical Structural Hairline Grid */}
@@ -211,6 +349,26 @@ export function AmbientBackground({ portalVelocityRef }: AmbientBackgroundProps)
         ref={canvasRef}
         className="absolute inset-0 w-full h-full"
       />
+
+      <div
+        aria-hidden="true"
+        className="ambient-kinetic-type absolute inset-0 overflow-hidden pointer-events-none"
+      >
+        <div
+          ref={securityLineRef}
+          className="ambient-kinetic-line ambient-kinetic-line--security"
+        >
+          <span>CYBERSECURITY</span>
+          <span aria-hidden="true">CYBERSECURITY</span>
+        </div>
+        <div
+          ref={developerLineRef}
+          className="ambient-kinetic-line ambient-kinetic-line--developer"
+        >
+          <span>FULL-STACK DEVELOPER</span>
+          <span aria-hidden="true">FULL-STACK DEVELOPER</span>
+        </div>
+      </div>
 
       {/* Layer 5: Subtle Film Grain Overlay (0.03 opacity) */}
       <div ref={grainRef} className="ambient-grain absolute inset-0" />

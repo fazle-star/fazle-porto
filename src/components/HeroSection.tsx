@@ -1,5 +1,148 @@
+import { useEffect, useRef } from 'react';
 import { Github, Globe, Terminal } from 'lucide-react';
 import { PORTFOLIO_DATA } from '../data/portfolio';
+import { clamp } from '../utils/portfolioEngine';
+
+interface SpringBadgeProps {
+  label: string;
+  className: string;
+}
+
+function SpringBadge({ label, className }: SpringBadgeProps) {
+  const badgeRef = useRef<HTMLButtonElement | null>(null);
+  const positionRef = useRef({
+    x: 0,
+    y: 0,
+    vx: 0,
+    vy: 0,
+    targetX: 0,
+    targetY: 0,
+    pointerX: 0,
+    pointerY: 0,
+    dragging: false,
+  });
+  const rafRef = useRef(0);
+  const reducedMotionRef = useRef(false);
+
+  useEffect(() => {
+    reducedMotionRef.current = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    return () => window.cancelAnimationFrame(rafRef.current);
+  }, []);
+
+  const animate = () => {
+    const position = positionRef.current;
+    const element = badgeRef.current;
+    if (!element) return;
+
+    if (reducedMotionRef.current) {
+      position.x = position.targetX;
+      position.y = position.targetY;
+      const centerTransform = className.includes('hero-sticker--campus')
+        ? ' translateX(-50%)'
+        : '';
+      element.style.transform =
+        position.x === 0 && position.y === 0
+          ? ''
+          : `translate3d(${position.x}px, ${position.y}px, 0)${centerTransform}`;
+      return;
+    }
+
+    position.vx = (position.vx + (position.targetX - position.x) * 0.2) * 0.72;
+    position.vy = (position.vy + (position.targetY - position.y) * 0.2) * 0.72;
+    position.x += position.vx;
+    position.y += position.vy;
+    const centerTransform = className.includes('hero-sticker--campus')
+      ? ' translateX(-50%)'
+      : '';
+    element.style.transform = `translate3d(${position.x.toFixed(1)}px, ${position.y.toFixed(1)}px, 0)${centerTransform} rotate(${(position.x * 0.035).toFixed(2)}deg)`;
+
+    if (
+      position.dragging ||
+      Math.abs(position.x - position.targetX) > 0.2 ||
+      Math.abs(position.y - position.targetY) > 0.2 ||
+      Math.abs(position.vx) > 0.2 ||
+      Math.abs(position.vy) > 0.2
+    ) {
+      rafRef.current = window.requestAnimationFrame(animate);
+    } else {
+      position.x = 0;
+      position.y = 0;
+      position.vx = 0;
+      position.vy = 0;
+      element.style.transform = '';
+    }
+  };
+
+  const startAnimation = () => {
+    window.cancelAnimationFrame(rafRef.current);
+    rafRef.current = window.requestAnimationFrame(animate);
+  };
+
+  return (
+    <button
+      ref={badgeRef}
+      type="button"
+      aria-label={`Draggable badge: ${label}`}
+      data-testid={`hero-sticker-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}
+      onPointerDown={(event) => {
+        event.currentTarget.setPointerCapture(event.pointerId);
+        positionRef.current.dragging = true;
+        positionRef.current.pointerX = event.clientX - positionRef.current.x;
+        positionRef.current.pointerY = event.clientY - positionRef.current.y;
+        startAnimation();
+      }}
+      onPointerMove={(event) => {
+        const position = positionRef.current;
+        if (!position.dragging) return;
+        position.targetX = clamp(event.clientX - position.pointerX, -90, 90);
+        position.targetY = clamp(event.clientY - position.pointerY, -70, 70);
+        if (reducedMotionRef.current) startAnimation();
+      }}
+      onPointerUp={() => {
+        positionRef.current.dragging = false;
+        positionRef.current.targetX = 0;
+        positionRef.current.targetY = 0;
+        startAnimation();
+      }}
+      onKeyDown={(event) => {
+        const position = positionRef.current;
+        const step = event.shiftKey ? 60 : 36;
+        if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+          event.preventDefault();
+          position.targetX = clamp(
+            position.x + (event.key === 'ArrowRight' ? step : -step),
+            -90,
+            90
+          );
+          startAnimation();
+        } else if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+          event.preventDefault();
+          position.targetY = clamp(
+            position.y + (event.key === 'ArrowDown' ? step : -step),
+            -70,
+            70
+          );
+          startAnimation();
+        }
+      }}
+      onKeyUp={(event) => {
+        if (!event.key.startsWith('Arrow')) return;
+        positionRef.current.targetX = 0;
+        positionRef.current.targetY = 0;
+        startAnimation();
+      }}
+      onPointerCancel={() => {
+        positionRef.current.dragging = false;
+        positionRef.current.targetX = 0;
+        positionRef.current.targetY = 0;
+        startAnimation();
+      }}
+      className={`spring-badge pointer-events-auto absolute z-30 rounded-full border border-[rgba(226,184,107,0.5)] bg-[#151821]/90 px-4 py-2.5 font-mono text-[9px] sm:text-[10px] font-semibold tracking-[0.12em] text-[#E2B86B] shadow-[0_12px_36px_rgba(0,0,0,0.4)] backdrop-blur-md cursor-grab active:cursor-grabbing select-none ${className}`}
+    >
+      {label}
+    </button>
+  );
+}
 
 interface HeroSectionProps {
   heroVisible: boolean;
@@ -119,6 +262,12 @@ export function HeroSection({
             className="hero-portrait-mask h-[44vh] min-h-[290px] max-h-[385px] md:h-[73vh] md:min-h-[450px] lg:h-[78vh] lg:max-h-[700px] w-auto object-contain select-none"
           />
         </div>
+      </div>
+
+      <div aria-label="Draggable focus badges" className="absolute inset-0 pointer-events-none">
+        <SpringBadge label="CYBERSECURITY" className="hero-sticker--security" />
+        <SpringBadge label="FULL-STACK WEB" className="hero-sticker--web" />
+        <SpringBadge label="PLAI BMD '26" className="hero-sticker--campus" />
       </div>
 
       {/* Bottom-Left: Minimal Vertical Social / Portfolio Icons */}

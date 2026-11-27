@@ -40,7 +40,7 @@ export function PortalAboutSection({
   const activePortalRef = useRef<PortalId>(activePortal);
   activePortalRef.current = activePortal;
 
-  const [portalProgress, setPortalProgress] = useState(0);
+  const [portalUiPhase, setPortalUiPhase] = useState(0);
   const [isZoomedInteractive, setIsZoomedInteractive] = useState(false);
   const [isMobileViewport, setIsMobileViewport] = useState<boolean>(() =>
     typeof window !== 'undefined' ? window.innerWidth < 768 : false
@@ -134,7 +134,7 @@ export function PortalAboutSection({
           portalEl.style.borderColor =
             metrics.borderAlpha <= 0.01
               ? 'transparent'
-              : `rgba(226, 184, 107, ${metrics.borderAlpha})`;
+              : `rgba(var(--accent-highlight-rgb), ${metrics.borderAlpha})`;
           portalEl.style.opacity = String(metrics.opacity);
           portalEl.style.visibility = metrics.opacity <= 0.01 ? 'hidden' : 'visible';
 
@@ -148,7 +148,7 @@ export function PortalAboutSection({
             progress > 0.08
               ? 'none'
               : !metrics.isReceding
-                ? '0 0 42px rgba(226, 184, 107, 0.18), 0 24px 60px rgba(0, 0, 0, 0.65)'
+                ? '0 0 42px rgba(var(--accent-highlight-rgb), 0.18), 0 24px 60px rgba(0, 0, 0, 0.65)'
                 : '0 16px 40px rgba(0, 0, 0, 0.45)';
 
           previewEl.style.opacity = String(metrics.previewOpacity);
@@ -173,7 +173,8 @@ export function PortalAboutSection({
           currentActive === 'workspace' ? wMetrics.innerOpacity : bMetrics.innerOpacity;
         const interactive = activeInnerOpacity >= 0.6;
         setIsZoomedInteractive((prev) => (prev !== interactive ? interactive : prev));
-        setPortalProgress((prev) => (Math.abs(prev - progress) > 0.01 ? progress : prev));
+        const uiPhase = progress < 0.04 ? 0 : progress < 0.08 ? 0.04 : 0.08;
+        setPortalUiPhase((prev) => (prev !== uiPhase ? uiPhase : prev));
 
         if (progress > 0.05 && progress < 0.9) {
           portalVelocityRef.current = Math.max(Math.sin(progress * Math.PI) * 0.45, velocity);
@@ -255,7 +256,7 @@ export function PortalAboutSection({
     </svg>
   );
 
-  const inMobileSwipeMode = isMobileViewport && portalProgress < 0.04;
+  const inMobileSwipeMode = isMobileViewport && portalUiPhase < 0.04;
   const workspaceActive = activePortal === 'workspace';
   const bioActive = activePortal === 'bio';
 
@@ -283,8 +284,8 @@ export function PortalAboutSection({
         <div
           className="hidden md:flex items-center gap-6 mb-4 z-30 transition-opacity duration-200"
           style={{
-            opacity: portalProgress < 0.08 ? 1 : 0,
-            pointerEvents: portalProgress < 0.08 ? 'auto' : 'none',
+            opacity: portalUiPhase < 0.08 ? 1 : 0,
+            pointerEvents: portalUiPhase < 0.08 ? 'auto' : 'none',
           }}
         >
           <button
@@ -340,10 +341,10 @@ export function PortalAboutSection({
               data-testid="portal-card-workspace"
               ref={workspacePortalRef}
               onMouseEnter={() => {
-                if (!isMobileViewport && portalProgress < 0.08) onSelectActivePortal('workspace');
+                if (!isMobileViewport && portalUiPhase < 0.08) onSelectActivePortal('workspace');
               }}
               onClick={() => {
-                if (portalProgress < 0.08) onSelectActivePortal('workspace');
+                if (portalUiPhase < 0.08) onSelectActivePortal('workspace');
               }}
               className="relative bg-[#151821] border-[1.5px] border-[#E2B86B] overflow-hidden flex items-center justify-center pointer-events-auto cursor-pointer"
               style={{
@@ -543,10 +544,10 @@ export function PortalAboutSection({
               data-testid="portal-card-bio"
               ref={bioPortalRef}
               onMouseEnter={() => {
-                if (!isMobileViewport && portalProgress < 0.08) onSelectActivePortal('bio');
+                if (!isMobileViewport && portalUiPhase < 0.08) onSelectActivePortal('bio');
               }}
               onClick={() => {
-                if (portalProgress < 0.08) onSelectActivePortal('bio');
+                if (portalUiPhase < 0.08) onSelectActivePortal('bio');
               }}
               className="relative bg-[#151821] border-[1.5px] border-[#E2B86B] overflow-hidden flex items-center justify-center pointer-events-auto cursor-pointer"
               style={{

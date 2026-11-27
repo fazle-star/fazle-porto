@@ -1,6 +1,11 @@
+import { ThemeSwitcher } from './ThemeSwitcher';
+import type { PortfolioTheme } from '../utils/theme';
+
 interface MobileFloatingNavProps {
   activeSection: string;
   onNavigate: (sectionId: string) => void;
+  theme: PortfolioTheme;
+  onThemeChange: (theme: PortfolioTheme) => void;
 }
 
 const MOBILE_LINKS = [
@@ -11,12 +16,17 @@ const MOBILE_LINKS = [
   { id: 'contact', label: 'Contact' },
 ];
 
-export function MobileFloatingNav({ activeSection, onNavigate }: MobileFloatingNavProps) {
+export function MobileFloatingNav({
+  activeSection,
+  onNavigate,
+  theme,
+  onThemeChange,
+}: MobileFloatingNavProps) {
   return (
     <nav
       aria-label="Mobile section navigation"
       data-testid="mobile-floating-nav"
-      className="md:hidden fixed bottom-[16px] left-1/2 -translate-x-1/2 z-[120] flex items-center gap-1 rounded-full border border-[rgba(226,184,107,0.22)] px-2 py-1 shadow-[0_12px_36px_rgba(0,0,0,0.65)] bg-[#151821]/96"
+      className="md:hidden fixed bottom-[16px] left-1/2 -translate-x-1/2 z-[120] flex items-center gap-0.5 rounded-full border border-[rgba(226,184,107,0.22)] px-1.5 py-1 shadow-[0_12px_36px_rgba(0,0,0,0.65)] bg-[#151821]/96"
     >
       {MOBILE_LINKS.map((link) => {
         const isActive = activeSection === link.id;
@@ -38,6 +48,7 @@ export function MobileFloatingNav({ activeSection, onNavigate }: MobileFloatingN
           </a>
         );
       })}
+      <ThemeSwitcher theme={theme} onChange={onThemeChange} compact />
     </nav>
   );
 }
